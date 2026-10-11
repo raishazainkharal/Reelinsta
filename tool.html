@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video tools | Reelinsta</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+:root{--red:#B22234;--blue:#3C3B6E;--navy:#23224A;--bg:#F6F5F1;--ink:#1A1A2E;--muted:#5A5A6E;--line:#DEDCD4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Public Sans",system-ui,sans-serif;line-height:1.65;font-size:17px}
+a{color:var(--blue)}
+:focus-visible{outline:3px solid var(--red);outline-offset:3px}
+.topbar{height:8px;background:repeating-linear-gradient(to right,var(--red) 0 33.333%,#fff 33.333% 66.666%,var(--blue) 66.666% 100%)}
+.wrap{max-width:660px;margin:0 auto;padding:22px 20px 50px}
+h1{font-family:"Source Serif 4",serif;color:var(--navy);font-size:clamp(28px,5vw,38px);line-height:1.2;margin:14px 0 6px}
+p.sub{color:var(--muted);margin:0 0 22px}
+.card{background:#fff;border:1px solid var(--line);border-top:5px solid var(--red);border-radius:8px;padding:22px;display:grid;gap:14px;box-shadow:0 10px 30px rgba(35,34,74,.1)}
+label{font-size:14.5px;font-weight:600;color:var(--navy);display:grid;gap:4px}
+input,select{font:inherit;font-weight:400;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.opts{display:none;gap:12px;grid-template-columns:1fr 1fr}
+.opts.show{display:grid}
+.hint{grid-column:1/-1;font-size:13.5px;color:var(--muted);margin:0}
+.btn{font:inherit;font-weight:700;padding:12px 24px;border:0;border-radius:8px;background:var(--red);color:#fff;cursor:pointer;text-align:center;text-decoration:none}
+.btn:hover{background:#951C2B}
+.btn:disabled{opacity:.6;cursor:wait}
+#dl{display:none;background:var(--blue)}
+#msg{min-height:1.5em;font-size:15px;color:var(--blue)}#msg.err{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="topbar"></div>
+<div class="wrap">
+  <a href="index.html">&larr; Back to home</a>
+  <h1>Video tools for your own files</h1>
+  <p class="sub">Upload a file, pick an action and download the result. Files are deleted from the server as soon as processing finishes.</p>
+
+  <div class="card">
+    <label>File (up to 200 MB)
+      <input type="file" id="file" accept="video/*,audio/*">
+    </label>
+    <label>Action
+      <select id="action">
+        <option value="compress">Compress (smaller file)</option>
+        <option value="mp4">Convert to MP4</option>
+        <option value="mp3">Extract MP3 audio</option>
+        <option value="gif">Make a GIF (first 15 seconds)</option>
+        <option value="resize">Resize</option>
+        <option value="delogo">Remove my logo or watermark</option>
+      </select>
+    </label>
+
+    <div class="opts" id="o-compress"><label>Quality (18 best, 35 smallest)<input type="number" id="crf" value="28" min="18" max="35"></label></div>
+    <div class="opts" id="o-resize"><label>Width in pixels<input type="number" id="width" value="720" min="144" max="3840"></label></div>
+    <div class="opts" id="o-delogo">
+      <label>X position<input type="number" id="x" value="10" min="1"></label>
+      <label>Y position<input type="number" id="y" value="10" min="1"></label>
+      <label>Width<input type="number" id="w" value="120" min="4"></label>
+      <label>Height<input type="number" id="h" value="60" min="4"></label>
+      <p class="hint">Use this only on videos you own or have permission to edit. Enter the box that covers the logo, in pixels from the top-left corner.</p>
+    </div>
+
+    <button class="btn" id="go">Start</button>
+    <div id="msg" role="status" aria-live="polite"></div>
+    <a class="btn" id="dl">Download result</a>
+  </div>
+</div>
+
+<script>
+const API_BASE = "";   // Your backend address, e.g. "https://your-app.onrender.com"
+const $ = id => document.getElementById(id);
+const say = (t,e)=>{$("msg").textContent=t;$("msg").className=e?"err":"";};
+function sync(){
+  document.querySelectorAll(".opts").forEach(o=>o.classList.remove("show"));
+  const o=$("o-"+$("action").value); if(o)o.classList.add("show");
+}
+$("action").addEventListener("change",sync);sync();
+$("go").addEventListener("click",async()=>{
+  const f=$("file").files[0];
+  $("dl").style.display="none";
+  if(!f)return say("Choose a file first.",true);
+  if(f.size>200*1024*1024)return say("This file is larger than 200 MB.",true);
+  if(!API_BASE)return say("The backend is not connected yet. Set API_BASE in the script.",true);
+  const fd=new FormData();
+  fd.append("file",f);fd.append("action",$("action").value);
+  ["crf","width","x","y","w","h"].forEach(k=>fd.append(k,$(k).value));
+  $("go").disabled=true;say("Processing. This can take a minute...");
+  try{
+    const r=await fetch(API_BASE+"/api/process",{method:"POST",body:fd});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||"Server error");
+    const blob=await r.blob();
+    const ext={mp3:"mp3",gif:"gif"}[$("action").value]||"mp4";
+    $("dl").href=URL.createObjectURL(blob);$("dl").download="result."+ext;
+    $("dl").style.display="block";say("Your file is ready.");
+  }catch(e){say("Failed: "+e.message,true);}
+  finally{$("go").disabled=false;}
+});
+</script>
+</body>
+</html>
